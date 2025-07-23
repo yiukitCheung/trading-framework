@@ -20,42 +20,43 @@ This document outlines the architecture and component flow for a single-user, mo
 
 ```mermaid
 flowchart TD
-    subgraph UI[Frontend (User Config)]
-        A1[Strategy + Params\n(Symbols, Intervals, N)]
+    subgraph UI["Frontend (User Config)"]
+        A1["Strategy + Params 
+        (Symbols, Intervals)"]
     end
 
-    subgraph Redis[Redis (Config Cache)]
-        A2[Store: strategy_config:user_123]
+    subgraph Redis["Redis (Config Cache)"]
+        A2["Store: strategy_config:user_123"]
     end
 
-    subgraph Scheduler[Scheduler Service]
-        B1[Pull Config]
-        B2[Select Top-N Symbols]
-        B3[Publish to Candidates Queue]
+    subgraph Scheduler["Scheduler Service"]
+        B1["Pull Config"]
+        B2["Select Top-N Symbols"]
+        B3["Publish to Candidates Queue"]
     end
 
-    subgraph DataFetcher[Data Fetcher Service]
-        C1[Subscribe to Candidates]
-        C2[Fetch OHLCV from Coinbase]
-        C3[Stream to Kafka/Store in Timescale]
+    subgraph DataFetcher["Data Fetcher Service"]
+        C1["Subscribe to Candidates"]
+        C2["Fetch OHLCV from Coinbase"]
+        C3["Stream to Kafka/Store in Timescale"]
     end
 
-    subgraph SignalEngine[Signal Engine Service]
-        D1[Subscribe to OHLCV Stream]
-        D2[Check Trade Manager]
-        D3[Run Strategy Steps (1–4)]
-        D4[Emit Signal to Redis]
+    subgraph SignalEngine["Signal Engine Service"]
+        D1["Subscribe to OHLCV Stream"]
+        D2["Check Trade Manager"]
+        D3["Run Strategy Steps (1–4)"]
+        D4["Emit Signal to Redis"]
     end
 
-    subgraph TradeManager[Trade Manager]
-        E1[Track open trades]
-        E2[Enforce single-trade rule]
+    subgraph TradeManager["Trade Manager"]
+        E1["Track open trades"]
+        E2["Enforce single-trade rule"]
     end
 
-    subgraph TradingExecutor[Trading Executor]
-        F1[Subscribe to Signals]
-        F2[Send Order to Coinbase]
-        F3[Update Trade State]
+    subgraph TradingExecutor["Trading Executor"]
+        F1["Subscribe to Signals"]
+        F2["Send Order to Coinbase"]
+        F3["Update Trade State"]
     end
 
     A1 --> A2
@@ -67,6 +68,7 @@ flowchart TD
     D2 --> E1
     D3 --> E2
     D4 --> F1 --> F2 --> F3 --> E1
+
 ```
 
 
