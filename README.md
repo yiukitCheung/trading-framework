@@ -1,4 +1,3 @@
-
 # Modular Real-Time Crypto Trading Framework
 
 ## System Overview
@@ -21,36 +20,36 @@ This document outlines the architecture and component flow for a single-user, mo
 ```mermaid
 flowchart TD
     subgraph UI["Frontend (User Config)"]
-        A1["Strategy + Params 
-        (Symbols, Intervals)"]
+        A1["Strategy + Params\n(Symbols, Intervals, Lookback)"]
     end
 
-    subgraph Redis["Redis (Config Cache)"]
-        A2["Store: strategy_config:user_123"]
-    end
-
-    subgraph Scheduler["Scheduler Service"]
-        B1["Pull Config"]
-        B2["Select Top-N Symbols"]
-        B3["Publish to Candidates Queue"]
+    subgraph Redis["Redis (Config Store)"]
+        A2["strategy_config:user_123"]
     end
 
     subgraph DataFetcher["Data Fetcher Service"]
-        C1["Subscribe to Candidates"]
-        C2["Fetch OHLCV from Coinbase"]
-        C3["Stream to Kafka/Store in Timescale"]
+        B1["Fetch Config"]
+        B2["Subscribe to WebSocket (Polygon)"]
+        B3["Stream OHLCV to Kafka/Redis"]
+    end
+
+    subgraph SymbolSelector["Symbol Selector"]
+        C1["Ingest OHLCV Stream"]
+        C2["Rank Top-N Symbols by Volume/Volatility"]
+        C3["Publish Top-N to Kafka/Redis"]
     end
 
     subgraph SignalEngine["Signal Engine Service"]
-        D1["Subscribe to OHLCV Stream"]
-        D2["Check Trade Manager"]
-        D3["Run Strategy Steps (1–4)"]
-        D4["Emit Signal to Redis"]
+        D1["Subscribe to OHLCV"]
+        D2["Receive Top-N Symbol List"]
+        D3["Check Trade Manager"]
+        D4["Run Strategy Steps (1–4)"]
+        D5["Emit Signal to Redis"]
     end
 
     subgraph TradeManager["Trade Manager"]
         E1["Track open trades"]
-        E2["Enforce single-trade rule"]
+        E2["Prevent double-entry"]
     end
 
     subgraph TradingExecutor["Trading Executor"]
@@ -63,12 +62,11 @@ flowchart TD
     A2 --> B1
     B1 --> B2 --> B3
     B3 --> C1 --> C2 --> C3
-    C3 --> D1
-    D1 --> D2 --> D3 --> D4
-    D2 --> E1
-    D3 --> E2
-    D4 --> F1 --> F2 --> F3 --> E1
-
+    C3 --> D2
+    D2 --> D1 --> D3 --> D4 --> D5
+    D3 --> E1
+    D4 --> E2
+    D5 --> F1 --> F2 --> F3 --> E1
 ```
 
 
@@ -82,16 +80,16 @@ flowchart TD
 - Stores latest user strategy configuration (`strategy_config:user_123`).
 - Used as central state for caching & config sharing.
 
-### Scheduler
-- Pulls config from Redis on interval.
-- Selects top-N crypto symbols (e.g., by volume).
-- Publishes candidate symbol list to Kafka or Redis Stream.
-
 ### Data Fetcher
-- Subscribes to updated candidate symbols.
-- Adjusts fetch targets dynamically.
-- Pulls OHLCV from Coinbase.
-- Streams candles to Kafka or TimescaleDB.
+- Subscribes to all available.
+- Pulls OHLCV from Polygon via WebSocket.
+- Streams candles to Kafka.
+
+### Symbol Selector
+- Ingests OHLCV data from WebSocket stream.
+- Maintains real-time sliding window per symbol.
+- Ranks Top-N symbols based on volume, volatility, or price movement.
+- Publishes Top-N symbol list to Kafka for use by the signal engine.
 
 ### Signal Engine
 - Listens to OHLCV streams.

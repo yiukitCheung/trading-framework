@@ -1,7 +1,13 @@
+import asyncio
+from .kafka_client import KafkaProducer
 from polygon import RESTClient
 from dotenv import load_dotenv
 import os
 import requests
+from polygon import WebSocketClient
+from polygon.websocket.models import WebSocketMessage, Market
+from typing import List
+
 # Load environment variables
 load_dotenv()
 
@@ -156,28 +162,74 @@ class PolygonIOClient:
             print(f"Error fetching sma indicators: {e}")
             return None
 
+class PolygonWebSocketClient:
+    def __init__(self):
+        self.api_key = os.getenv("POLYGON_WS_API_KEY")
+        self.ws_client = WebSocketClient(market=Market.Crypto, api_key=self.api_key)
+
+    def handle_msg(self, msgs: List[WebSocketMessage]):
+        """Synchronous message handler for Polygon WebSocket"""
+        for m in msgs:
+            attrs = vars(m)
+            keys_to_keep = ["pair", "open", "high", "low", "close", "volume", "vwap", "avg_trade_size"]
+            filtered_msg = {k: attrs.get(k) for k in keys_to_keep if k in attrs and attrs.get(k) is not None}
+            symbol = filtered_msg.get("pair")
+            if symbol:
+                # Schedule the async Kafka send in the event loop
+                try:
+                    loop = asyncio.get_running_loop()
+                    task = loop.create_task(KafkaProducer.send("ohlcv.realtime", key=symbol, value=filtered_msg))
+                    # Add error handling for the background task
+                    task.add_done_callback(self._handle_kafka_task_result)
+                except RuntimeError:
+                    # If no event loop is running, print a warning
+                    print(f"Warning: No event loop running, cannot send message for {symbol}")
+    
+    def _handle_kafka_task_result(self, task):
+        """Handle the result of async Kafka send tasks"""
+        try:
+            task.result()  # This will raise an exception if the task failed
+        except Exception as e:
+            print(f"Error sending Kafka message: {e}")
+
+    def get_all_crypto_tickers(self):
+        self.ws_client.subscribe("XA.*")
+        self.ws_client.run(self.handle_msg)
+    
+    def get_crypto_ticker_data(self, ticker: list[str]):
+        for t in ticker:
+            self.ws_client.subscribe(f"XA.{t}")
+        self.ws_client.run(self.handle_msg)
+    
+    def get_all_level_2_data(self):
+        self.ws_client.subscribe("XL2.*")
+        self.ws_client.run(self.handle_msg)
+
 if __name__ == "__main__":
-    client = PolygonIOClient()
-    tickers = client.get_all_crypto_tickers()
-    for ticker in tickers:
-        print(ticker["ticker"])
+    # client = PolygonIOClient()
+    # tickers = client.get_all_crypto_tickers()
+    # for ticker in tickers:
+    #     print(ticker["ticker"])
     
-    ohlcv = client.get_ohlcv("SUI", "15m", "2025-07-21", "2025-07-22")
-    for ohlcv in ohlcv:
-        print(ohlcv)
+    # ohlcv = client.get_ohlcv("SUI", "15m", "2025-07-21", "2025-07-22")
+    # for ohlcv in ohlcv:
+    #     print(ohlcv)
     
-    ema_indicators = client.get_ema_indicators("SUI", "15m", "2025-07-21", "2025-07-22")
-    for ema_indicator in ema_indicators:
-        print(ema_indicator)
+    # ema_indicators = client.get_ema_indicators("SUI", "15m", "2025-07-21", "2025-07-22")
+    # for ema_indicator in ema_indicators:
+    #     print(ema_indicator)
     
-    rsi_indicators = client.get_rsi_indicators("SUI", "15m", "2025-07-21", "2025-07-22")
-    for rsi_indicator in rsi_indicators:
-        print(rsi_indicator)
+    # rsi_indicators = client.get_rsi_indicators("SUI", "15m", "2025-07-21", "2025-07-22")
+    # for rsi_indicator in rsi_indicators:
+    #     print(rsi_indicator)
     
-    macd_indicators = client.get_macd_indicators("SUI", "15m", "2025-07-21", "2025-07-22")  
-    for macd_indicator in macd_indicators:
-        print(macd_indicator)
+    # macd_indicators = client.get_macd_indicators("SUI", "15m", "2025-07-21", "2025-07-22")  
+    # for macd_indicator in macd_indicators:
+    #     print(macd_indicator)
     
-    sma_indicators = client.get_sma_indicators("SUI", "15m", "2025-07-21", "2025-07-22")
-    for sma_indicator in sma_indicators:
-        print(sma_indicator)
+    # sma_indicators = client.get_sma_indicators("SUI", "15m", "2025-07-21", "2025-07-22")
+    # for sma_indicator in sma_indicators:
+    #     print(sma_indicator)
+    
+    ws_client = PolygonWebSocketClient()
+    ws_client.get_all_crypto_tickers()
